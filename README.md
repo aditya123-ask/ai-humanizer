@@ -16,15 +16,6 @@ python ai_humanizer.py
 - Screen output shows before/after comparison
 - Final result saved to `humanized_result.txt`
 
-## 📁 Project Structure (Clean & Simple)
-
-```
-├── ai_humanizer.py          # Single working script
-├── sample_paragraph.txt     # Your input text
-├── humanized_result.txt     # Humanized output
-└── requirements.txt         # Dependencies
-```
-
 ## 🎯 Features
 
 - ✅ Professional humanization quality
