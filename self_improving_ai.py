@@ -199,33 +199,82 @@ class LearningEngine:
         self.adaptation_history = []
     
     def analyze_performance(self, original_text, humanized_text):
-        """Analyze and score the transformation quality"""
+        """Analyze and score REAL transformation quality"""
         score = 0.0
         
-        # Human voice indicators
+        # 1. Human Voice Indicators (15 points max) - More realistic
         human_indicators = ['from our experience', 'what we\'ve found', 'in practice', 
                           'that\'s why', 'the reality is', 'simply put']
         humanized_lower = humanized_text.lower()
-        score += sum([1 for indicator in human_indicators if indicator in humanized_lower]) * 10
+        found_indicators = sum([1 for indicator in human_indicators if indicator in humanized_lower])
+        score += found_indicators * 2.5  # 2.5 points each, max 15
         
-        # Sentence variety
-        sentences = re.split(r'[.!?]+', humanized_text)
-        sentence_lengths = [len(s.split()) for s in sentences if s.strip()]
-        if sentence_lengths:
-            length_variance = np.var(sentence_lengths)
-            score += min(length_variance, 50)  # Cap variance contribution
+        # 2. Sentence Variety (20 points max) - More strict
+        sentences = [s.strip() for s in re.split(r'[.!?]+', humanized_text) if s.strip()]
+        if len(sentences) > 1:
+            sentence_lengths = [len(s.split()) for s in sentences]
+            # Good variety means significant difference between shortest and longest
+            min_len = min(sentence_lengths)
+            max_len = max(sentence_lengths)
+            variety_ratio = max_len / min_len if min_len > 0 else 1
+            score += min(variety_ratio * 2, 20)  # Max 20 points
         
-        # Vocabulary enhancement
+        # 3. Vocabulary Enhancement (15 points max) - Quality over quantity
         orig_words = set(original_text.lower().split())
         human_words = set(humanized_text.lower().split())
         new_words = human_words - orig_words
-        score += min(len(new_words) * 2, 30)
+        # Only count meaningful words (3+ characters)
+        meaningful_words = [w for w in new_words if len(w) >= 3]
+        score += min(len(meaningful_words) * 1.5, 15)
         
-        # Natural flow indicators
+        # 4. Natural Flow (15 points max) - Not overused
         flow_patterns = ['and', 'but', 'so', 'well', 'you know', 'i mean']
-        score += sum([humanized_text.lower().count(pattern) for pattern in flow_patterns]) * 5
+        flow_count = sum([humanized_text.lower().count(pattern) for pattern in flow_patterns])
+        # Optimal range is 3-8 uses, too many is bad
+        if 3 <= flow_count <= 8:
+            score += 15
+        elif 1 <= flow_count < 3:
+            score += flow_count * 5
+        else:
+            score += max(0, 15 - (flow_count - 8) * 2)
+        
+        # 5. Technical Accuracy (20 points max) - Must preserve meaning
+        technical_terms = self._extract_technical_terms(original_text)
+        preserved_terms = sum([1 for term in technical_terms if term.lower() in humanized_text.lower()])
+        if technical_terms:
+            accuracy_ratio = preserved_terms / len(technical_terms)
+            score += accuracy_ratio * 20
+        
+        # 6. Readability Score (15 points max) - Flesch-like simplicity
+        avg_sentence_length = sum(len(s.split()) for s in sentences) / len(sentences) if sentences else 0
+        # Ideal average is 12-18 words
+        if 12 <= avg_sentence_length <= 18:
+            score += 15
+        elif 8 <= avg_sentence_length < 12:
+            score += 10
+        elif 18 < avg_sentence_length <= 25:
+            score += 10
+        else:
+            score += 5
         
         return min(score, 100)  # Cap at 100
+    
+    def _extract_technical_terms(self, text):
+        """Extract technical terms that should be preserved"""
+        # Common technical patterns
+        technical_patterns = [
+            r'\b\w+(?:tion|ment|ence|ance|ity|ism|logy|graphy|ics)\b',  # Common technical endings
+            r'\b\w+(?:system|network|data|process|algorithm|analysis|monitor|manage)\b',  # Common tech words
+            r'\b[A-Z]{2,}\b',  # Acronyms
+            r'\b\d+(?:\.\d+)?\s*(?:%|mm|cm|m|kg|g|ms|s|hz|khz|mhz|ghz)\b',  # Measurements
+        ]
+        
+        technical_terms = set()
+        for pattern in technical_patterns:
+            matches = re.findall(pattern, text, re.IGNORECASE)
+            technical_terms.update(matches)
+        
+        return list(technical_terms)
     
     def improve_prompt(self, base_prompt, performance_history):
         """Adaptively improve the humanization prompt based on performance"""
@@ -293,9 +342,9 @@ class SelfImprovingAI:
         base_prompt = self._get_base_prompt(text)
         improved_prompt = self.learning_engine.improve_prompt(base_prompt, self.performance_history)
         
-        print("Calling AI with learned optimizations...")
+        print("Calling Google Gemini API with learned optimizations...")
         
-        # Call the AI
+        # Call Google Gemini API
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent?key={self.api_key}"
         
         headers = {'Content-Type': 'application/json'}
@@ -313,6 +362,10 @@ class SelfImprovingAI:
         
         try:
             response = requests.post(url, headers=headers, json=data)
+            
+            print(f"Response Status: {response.status_code}")
+            if response.status_code != 200:
+                print(f"Error Details: {response.text}")
             
             if response.status_code == 200:
                 result = response.json()
